@@ -118,10 +118,78 @@ var stringify = function (obj, prop) {
   return 'var options = ' + json + ';';
 };
 
+var generateWebpage = function (swaggerDoc, opts, options, customCss, customfavIcon, swaggerUrl, customeSiteTitle) {
+  var isExplorer
+  var customJs
+  if (opts && typeof opts === 'object') {
+    isExplorer = opts.explorer
+    options = opts.swaggerOptions
+    customCss = opts.customCss
+    customJs = opts.customJs
+    customfavIcon = opts.customfavIcon
+    swaggerUrl = opts.swaggerUrl
+    customeSiteTitle = opts.customSiteTitle
+  } else {
+    //support legacy params based function
+    isExplorer = opts
+  }
+  options = options || {};
+  var explorerString = isExplorer ? '' : '.swagger-ui .topbar .download-url-wrapper { display: none }';
+  customCss = explorerString + ' ' + customCss || explorerString;
+  customfavIcon = customfavIcon || false;
+  customeSiteTitle = customeSiteTitle || 'Swagger UI';
+  var html = fs.readFileSync(__dirname + '/indexTemplate.html');
+  try {
+    fs.unlinkSync(__dirname + '/index.html');
+  } catch (e) {
+
+  }
+
+  var favIconString = customfavIcon ? '<link rel="icon" href="' + customfavIcon + '" />' : favIconHtml;
+  var htmlWithCustomCss = html.toString().replace('<% customCss %>', customCss);
+  var htmlWithFavIcon = htmlWithCustomCss.replace('<% favIconString %>', favIconString);
+  var htmlWithCustomJs = htmlWithFavIcon.replace('<% customJs %>', customJs ? `<script src="${customJs}"></script>` : '');
+
+  var initOptions = {
+    swaggerDoc: swaggerDoc || undefined,
+    customOptions: options,
+    swaggerUrl: swaggerUrl || undefined
+  }
+  var js = fs.readFileSync(__dirname + '/swagger-ui-init.js');
+
+  return {
+    js: js.toString().replace('<% swaggerOptions %>', stringify(initOptions)),
+    html: htmlWithCustomJs.replace('<% title %>', customeSiteTitle)
+  }
+}
+
+function serveAndSetup(swaggerDoc, opts, options, customCss, customfavIcon, swaggerUrl, customeSiteTitle) {
+  var {
+    js,
+    html
+  } = generateWebpage(swaggerDoc, opts, options, customCss, customfavIcon, swaggerUrl, customeSiteTitle)
+
+  const serveJS = (req, res, next) => {
+    if (req.url === '/swagger-ui-init.js') {
+      res.set('Content-Type', 'application/javascript')
+      res.send(js)
+    } else {
+      next()
+    }
+  }
+
+  const serveHTML = (req, res) => {
+    res.send(html)
+  }
+
+  return [serveJS, swaggerAssetMiddleware(), serveHTML]
+}
+
 module.exports = {
 	setup: setup,
 	serve: serve,
   serveWithOptions: serveWithOptions,
   generateHTML: generateHTML,
-  serveFiles: serveFiles
+  serveFiles: serveFiles,
+  serveAndSetup
 };
